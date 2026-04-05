@@ -10,6 +10,7 @@ we now have: Claude → In-Process SDK Tool → Jupyter.
 from __future__ import annotations
 
 import argparse
+import asyncio
 import contextlib
 import queue
 import signal
@@ -21,7 +22,6 @@ import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-import trio
 from claude_agent_sdk import (
     ClaudeAgentOptions,
     McpServerConfig,
@@ -38,6 +38,7 @@ from .capture_helpers import (
 from .claude_client import ClaudeClientManager, run_streaming_query
 from .config_manager import ConfigManager
 from .history_manager import HistoryManager
+from .hooks_loader import load_hooks
 from .jupyter_integration import (
     adjust_cell_queue_markers,
     create_approval_cell,
@@ -45,6 +46,7 @@ from .jupyter_integration import (
     process_cell_queue,
 )
 from .prompt_builder import PromptBuilder, get_system_prompt
+from .skill_loader import SkillLoader
 from .variable_tracker import VariableTracker
 
 if TYPE_CHECKING:
@@ -67,7 +69,7 @@ async def execute_python_tool(args: dict[str, Any]) -> dict[str, Any]:
     """Handle create_python_cell tool calls - create cells and return immediately."""
     if _magic_instance is None:
         # Ensure async checkpoint before returning
-        await trio.lowlevel.checkpoint()
+        await asyncio.sleep(0)
         return {
             "content": [{"type": "text", "text": "❌ Magic instance not initialized"}],
             "is_error": True,
@@ -76,7 +78,7 @@ async def execute_python_tool(args: dict[str, Any]) -> dict[str, Any]:
     code = args.get("code", "")
     if not code:
         # Ensure async checkpoint before returning
-        await trio.lowlevel.checkpoint()
+        await asyncio.sleep(0)
         return {
             "content": [{"type": "text", "text": "❌ No code provided"}],
             "is_error": True,
@@ -88,7 +90,7 @@ async def execute_python_tool(args: dict[str, Any]) -> dict[str, Any]:
         >= _magic_instance._config_manager.max_cells
     ):
         # Ensure async checkpoint before returning
-        await trio.lowlevel.checkpoint()
+        await asyncio.sleep(0)
         return {
             "content": [
                 {
@@ -122,7 +124,7 @@ async def execute_python_tool(args: dict[str, Any]) -> dict[str, Any]:
         _magic_instance._config_manager.create_python_cell_count += 1
 
         # Ensure async checkpoint before returning
-        await trio.lowlevel.checkpoint()
+        await asyncio.sleep(0)
         # Return immediately - don't wait for user
         return {
             "content": [
@@ -136,7 +138,7 @@ async def execute_python_tool(args: dict[str, Any]) -> dict[str, Any]:
     except Exception as e:
         traceback.print_exc(file=sys.stderr)
         # Ensure async checkpoint before returning
-        await trio.lowlevel.checkpoint()
+        await asyncio.sleep(0)
         return {
             "content": [{"type": "text", "text": f"❌ Error creating cells: {e!s}"}],
             "is_error": True,
@@ -158,6 +160,7 @@ class ClaudeCodeMagics(Magics):
         self._history_manager = HistoryManager(shell)
         self._prompt_builder = PromptBuilder(shell)
         self._config_manager = ConfigManager()
+        self._skill_loader = SkillLoader(self._config_manager.skills_path)
 
         # Request tracking for cell-based flow
         # request_id -> request data
@@ -294,6 +297,7 @@ class ClaudeCodeMagics(Magics):
         previous_execution: str = "",
         captured_images: list[dict[str, Any]] | None = None,
         verbose: bool = False,
+        extra_skills: list[str] | None = None,
     ) -> None:
         """
         Implementation of claude_local functionality with support for captured images.
@@ -306,6 +310,11 @@ class ClaudeCodeMagics(Magics):
         """
         if captured_images is None:
             captured_images = []
+
+        # Inject active skills into the prompt
+        all_skills = (self._config_manager.active_skills or []) + (extra_skills or [])
+        if all_skills:
+            prompt = self._skill_loader.inject(all_skills, prompt)
 
         # Generate a new request ID for this batch of tool calls
         self.current_request_id = str(uuid.uuid4())
@@ -418,6 +427,9 @@ Your client's request is <request>{prompt}</request>
             # Merge with our SDK server
             mcp_servers.update(additional_mcp_servers)
 
+        # Load Python hooks if configured
+        hooks = load_hooks(self._config_manager.hooks_file)
+
         options = ClaudeAgentOptions(
             allowed_tools=[
                 "Bash",
@@ -432,6 +444,7 @@ Your client's request is <request>{prompt}</request>
                 "mcp__jupyter__create_python_cell",
             ],
             model=self._config_manager.model,
+            cli_path=self._config_manager.cli_path,
             mcp_servers=mcp_servers,  # Use the combined dictionary
             system_prompt={
                 "type": "preset",
@@ -441,6 +454,7 @@ Your client's request is <request>{prompt}</request>
                     max_cells=self._config_manager.max_cells,
                 ),
             },
+            hooks=hooks,
             setting_sources=["user", "project", "local"],
         )
 
@@ -469,18 +483,26 @@ Your client's request is <request>{prompt}</request>
         exception_queue: queue.Queue[Exception] = queue.Queue()
 
         def run_in_thread() -> None:
+            # Create a fresh event loop manually to avoid asyncio.run()'s
+            # contextvars.copy_context() capturing Jupyter's parent_header ContextVar,
+            # which causes intermittent conflicts with ipykernel.
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
             try:
-                # This always works because the thread has its own context
-                trio.run(
-                    self._run_streaming_query,
-                    enhanced_prompt,
-                    options,
-                    verbose,
+                loop.run_until_complete(
+                    self._run_streaming_query(enhanced_prompt, options, verbose)
                 )
             except Exception as e:
                 exception_queue.put(e)
+            finally:
+                try:
+                    loop.run_until_complete(loop.shutdown_asyncgens())
+                except Exception:
+                    pass
+                loop.close()
+                asyncio.set_event_loop(None)
 
-        # Run in a separate thread to avoid any trio context issues
+        # Run in a separate thread to avoid any asyncio context issues
         thread = threading.Thread(target=run_in_thread)
         thread.start()
 
@@ -492,11 +514,15 @@ Your client's request is <request>{prompt}</request>
             if self._client_manager is not None:
                 print("Interrupting Claude Code")
 
-                # Handle interrupt in a separate thread to avoid nesting trio.run()
+                # Handle interrupt in a separate thread
                 def handle_interrupt() -> None:
                     if self._client_manager is not None:
                         with contextlib.suppress(Exception):
-                            trio.run(self._client_manager.handle_interrupt)
+                            loop = asyncio.new_event_loop()
+                            loop.run_until_complete(
+                                self._client_manager.handle_interrupt()
+                            )
+                            loop.close()
 
                 interrupt_thread = threading.Thread(target=handle_interrupt)
                 interrupt_thread.start()
@@ -704,6 +730,41 @@ Your client's request is <request>{prompt}</request>
         dest="model",
         help="Model to use for Claude Code (default: sonnet)",
     )
+    @argument(
+        "--cli-path",
+        type=str,
+        dest="cli_path",
+        help="Path to CLI binary (e.g. openclaude). Also settable via NOTELLM_CLI_PATH env var.",
+    )
+    @argument(
+        "--skill",
+        type=str,
+        action="append",
+        dest="skill",
+        metavar="SKILL_NAME",
+        help="Load a skill by name (can be repeated). Searches ~/.claude/skills/ and ~/.claude/commands/.",
+    )
+    @argument(
+        "--no-skill",
+        type=str,
+        action="append",
+        dest="no_skill",
+        metavar="SKILL_NAME",
+        help="Remove a previously loaded skill from the session.",
+    )
+    @argument(
+        "--no-cost",
+        action="store_true",
+        default=False,
+        dest="no_cost",
+        help="Suppress cost/token display after this run.",
+    )
+    @argument(
+        "--hooks-file",
+        type=str,
+        dest="hooks_file",
+        help="Path to a Python file defining a HOOKS dict. Also settable via NOTELLM_HOOKS_FILE env var.",
+    )
     def cc(self, line: str, cell: str | None = None) -> None:
         """
         Run Claude Code with full agentic loop.
@@ -769,7 +830,7 @@ Your client's request is <request>{prompt}</request>
 
             if not prompt:
                 raise ValueError("A prompt must be provided to start the conversation.")
-            self._execute_prompt(prompt, verbose=args.verbose)
+            self._execute_prompt(prompt, verbose=args.verbose, extra_skills=args.skill)
 
     @line_cell_magic
     def ccn(self, line: str, cell: str | None = None) -> None:
@@ -831,6 +892,37 @@ Your client's request is <request>{prompt}</request>
         # Now run as normal
         self._config_manager.is_new_conversation = True
         self._execute_prompt(prompt, verbose=args.verbose)
+
+    @line_cell_magic
+    def cc_skills(self, line: str, cell: str | None = None) -> None:
+        """
+        List available skills and show which are active in the current session.
+
+        Usage:
+            %cc_skills           - list all skills
+            %cc_skills reload    - refresh the skill index
+        """
+        if line.strip() == "reload":
+            self._skill_loader = SkillLoader(self._config_manager.skills_path)
+            print("🔄 Skill index reloaded.", flush=True)
+
+        skills = self._skill_loader.list_skills()
+        active = set(self._config_manager.active_skills)
+
+        if not skills:
+            print("No skills found. Add .md files to ~/.claude/skills/ or ~/.claude/commands/", flush=True)
+            return
+
+        print(f"\n{'Name':<30} {'Source':<12} {'Active':<8} Description", flush=True)
+        print("-" * 90, flush=True)
+        for s in skills:
+            marker = "✅" if s["name"] in active else "  "
+            print(
+                f"{s['name']:<30} {s.get('source',''):<12} {marker:<8} {s['description'][:50]}",
+                flush=True,
+            )
+        print(f"\nActive skills: {list(active) if active else 'none'}", flush=True)
+        print("Use %cc --skill <name> to activate, %cc --no-skill <name> to deactivate.", flush=True)
 
     def _parse_args_and_prompt(
         self, line: str, magic_func: Any

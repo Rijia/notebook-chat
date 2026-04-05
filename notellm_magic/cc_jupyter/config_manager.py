@@ -6,6 +6,7 @@ Handles all configuration options and command-line argument processing.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -42,6 +43,19 @@ class ConfigManager:
 
         # Model selection
         self.model = "sonnet"
+
+        # CLI path (for openclaude or other compatible CLIs)
+        self.cli_path: str | None = os.environ.get("NOTELLM_CLI_PATH") or None
+
+        # Skill loading
+        self.skills_path: str | None = os.environ.get("NOTELLM_SKILLS_PATH") or None
+        self.active_skills: list[str] = []  # skills loaded for current session
+
+        # Cost/usage display
+        self.show_cost: bool = True
+
+        # Python hooks file
+        self.hooks_file: str | None = os.environ.get("NOTELLM_HOOKS_FILE") or None
 
         # Import tracking
         self.imported_files: list[str] = []
@@ -156,6 +170,40 @@ class ConfigManager:
         if args.model is not None:
             self.model = args.model
             print(f"✅ Set model to {self.model}. {pickup_message}")
+            return True
+
+        if args.cli_path is not None:
+            self.cli_path = args.cli_path
+            print(f"✅ Set CLI path to {self.cli_path}. {pickup_message}")
+            return True
+
+        if args.skill:
+            for skill in args.skill:
+                if skill not in self.active_skills:
+                    self.active_skills.append(skill)
+                    print(f"✅ Added skill '{skill}' to session. {pickup_message}")
+                else:
+                    print(f"ℹ️  Skill '{skill}' already active.")
+            return True
+
+        if args.no_skill:
+            for skill in args.no_skill:
+                if skill in self.active_skills:
+                    self.active_skills.remove(skill)
+                    print(f"✅ Removed skill '{skill}' from session.")
+                else:
+                    print(f"ℹ️  Skill '{skill}' was not active.")
+            return True
+
+        if args.no_cost is not None:
+            self.show_cost = not args.no_cost
+            state = "disabled" if args.no_cost else "enabled"
+            print(f"✅ Cost display {state}.")
+            return True
+
+        if args.hooks_file is not None:
+            self.hooks_file = args.hooks_file
+            print(f"✅ Set hooks file to {self.hooks_file}. {pickup_message}")
             return True
 
         if args.cells_to_load is not None:

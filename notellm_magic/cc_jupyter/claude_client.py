@@ -5,11 +5,11 @@ Handles streaming queries and message processing by creating fresh ClaudeSDKClie
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import traceback
 from typing import TYPE_CHECKING, Any
 
-import trio
 from claude_agent_sdk import (
     AssistantMessage,
     ClaudeAgentOptions,
@@ -39,6 +39,28 @@ MARKDOWN_PATTERNS = [
 ]
 
 
+def _display_cost(message: ResultMessage) -> None:
+    """Print a compact cost/usage summary from a ResultMessage."""
+    parts = []
+    if message.total_cost_usd is not None:
+        parts.append(f"💰 ${message.total_cost_usd:.4f}")
+    if message.usage:
+        inp = message.usage.get("input_tokens", 0)
+        out = message.usage.get("output_tokens", 0)
+        cache_read = message.usage.get("cache_read_input_tokens", 0)
+        if inp or out:
+            token_str = f"↑{inp:,} ↓{out:,}"
+            if cache_read:
+                token_str += f" cache↩{cache_read:,}"
+            parts.append(token_str)
+    if message.num_turns:
+        parts.append(f"{message.num_turns} turn{'s' if message.num_turns != 1 else ''}")
+    if message.duration_ms:
+        parts.append(f"{message.duration_ms / 1000:.1f}s")
+    if parts:
+        print(f"\n{'  '.join(parts)}", flush=True)
+
+
 def _display_claude_message_with_markdown(text: str) -> None:
     """Display a Claude message with markdown rendering if relevant and available."""
     claude_message = f"💭 Claude: {text}"
@@ -58,7 +80,9 @@ def _display_claude_message_with_markdown(text: str) -> None:
         from IPython.display import Markdown, display
 
         display(Markdown(claude_message))
-    except ImportError:
+    except (ImportError, LookupError):
+        # LookupError: Jupyter's parent_header ContextVar is not set in our
+        # background asyncio context, so fall back to plain print.
         print(claude_message, flush=True)
 
 
@@ -156,6 +180,7 @@ class ClaudeClientManager:
         is_new_conversation: bool,
         verbose: bool = False,
         enable_interrupt: bool = True,
+        show_cost: bool = True,
     ) -> tuple[list[str], list[str]]:
         """
         Send a query and collect all responses synchronously.
@@ -172,7 +197,7 @@ class ClaudeClientManager:
             Tuple of (assistant_messages, tool_calls)
         """
         # Ensure we have an async checkpoint at the start
-        await trio.lowlevel.checkpoint()
+        await asyncio.sleep(0)
 
         tool_calls: list[str] = []
         assistant_messages: list[str] = []
@@ -197,19 +222,17 @@ class ClaudeClientManager:
             # Send the query based on prompt type
             if isinstance(prompt, list):
                 # Structured content with images
-                @trio.as_safe_channel
                 async def content_generator() -> Any:  # noqa: ANN401
-                    await trio.lowlevel.checkpoint()
+                    await asyncio.sleep(0)
                     message = {
                         "type": "user",
                         "message": {"role": "user", "content": prompt},
                         "parent_tool_use_id": None,
                     }
                     yield message
-                    await trio.lowlevel.checkpoint()
+                    await asyncio.sleep(0)
 
-                async with content_generator() as channel:
-                    await client.query(channel)
+                await client.query(content_generator())
             else:
                 # Simple string prompt
                 await client.query(prompt)
@@ -221,34 +244,34 @@ class ClaudeClientManager:
             if enable_interrupt:
                 # Collect messages with interrupt checking
                 messages_to_process: list[Any] = []
-                async with trio.open_nursery() as nursery:
-                    # Start a task to collect messages
-                    async def collect_messages() -> None:
-                        # Ensure checkpoint at function entry
-                        await trio.lowlevel.checkpoint()
-                        async for message in client.receive_response():
-                            messages_to_process.append(message)
-                            if isinstance(message, ResultMessage):
-                                break
 
-                    # Start the collection task
-                    nursery.start_soon(collect_messages)
-
-                    # Monitor for interrupts
-                    while True:
-                        if self._interrupt_requested:
-                            nursery.cancel_scope.cancel()
-                            await client.interrupt()
-                            print("\n⚠️ Query interrupted by user", flush=True)
+                async def collect_messages() -> None:
+                    await asyncio.sleep(0)
+                    async for message in client.receive_response():
+                        messages_to_process.append(message)
+                        if isinstance(message, ResultMessage):
                             break
 
-                        # Check if we're done
-                        if messages_to_process and isinstance(
-                            messages_to_process[-1], ResultMessage
-                        ):
-                            break
+                collect_task = asyncio.create_task(collect_messages())
 
-                        await trio.sleep(0.05)
+                # Monitor for interrupts
+                while True:
+                    if self._interrupt_requested:
+                        collect_task.cancel()
+                        await client.interrupt()
+                        print("\n⚠️ Query interrupted by user", flush=True)
+                        break
+
+                    # Check if we're done
+                    if messages_to_process and isinstance(
+                        messages_to_process[-1], ResultMessage
+                    ):
+                        break
+
+                    await asyncio.sleep(0.05)
+
+                with contextlib.suppress(asyncio.CancelledError, Exception):
+                    await collect_task
 
                 # Process collected messages
                 for message in messages_to_process:
@@ -269,7 +292,6 @@ class ClaudeClientManager:
                                     print(f"  ⎿  Arguments: {block.input}", flush=True)
                                 tool_calls.append(f"{block.name}: {block.input}")
                     elif isinstance(message, ResultMessage):
-                        # Extract and store session ID from result
                         if (
                             message.session_id
                             and message.session_id != self._session_id
@@ -279,6 +301,8 @@ class ClaudeClientManager:
                                 f"📍 Claude Code Session ID: {self._session_id}",
                                 flush=True,
                             )
+                        if show_cost:
+                            _display_cost(message)
             else:
                 # Simple mode without interrupt support
                 async for message in client.receive_response():
@@ -299,7 +323,6 @@ class ClaudeClientManager:
                                     print(f"  ⎿  Arguments: {block.input}", flush=True)
                                 tool_calls.append(f"{block.name}: {block.input}")
                     elif isinstance(message, ResultMessage):
-                        # Extract and store session ID from result
                         if (
                             message.session_id
                             and message.session_id != self._session_id
@@ -309,6 +332,8 @@ class ClaudeClientManager:
                                 f"\n📍 Claude Code Session ID: {self._session_id}",
                                 flush=True,
                             )
+                        if show_cost:
+                            _display_cost(message)
                         break
 
         except Exception as e:
@@ -335,9 +360,7 @@ class ClaudeClientManager:
         finally:
             # Always disconnect and clean up the client
             try:
-                # Use a shielded cancel scope with timeout for cleanup
-                with trio.CancelScope(shield=True, deadline=trio.current_time() + 2):
-                    await client.disconnect()
+                await asyncio.wait_for(client.disconnect(), timeout=2)
             except Exception:
                 pass  # Ignore disconnect errors
             self._current_client = None
@@ -350,7 +373,7 @@ class ClaudeClientManager:
         if self._current_client is not None:
             with contextlib.suppress(Exception):
                 await self._current_client.interrupt()
-        await trio.lowlevel.checkpoint()
+        await asyncio.sleep(0)
 
     def reset_session(self) -> None:
         """Clear the stored session ID to start a new conversation."""
@@ -378,7 +401,11 @@ async def run_streaming_query(
 
     # Run the query with a fresh client
     await parent._client_manager.query_sync(
-        prompt, options, parent._config_manager.is_new_conversation, verbose
+        prompt,
+        options,
+        parent._config_manager.is_new_conversation,
+        verbose,
+        show_cost=parent._config_manager.show_cost,
     )
 
     # Update last output line
