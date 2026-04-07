@@ -181,10 +181,10 @@ class ConfigManager:
             for skill in args.skill:
                 if skill not in self.active_skills:
                     self.active_skills.append(skill)
-                    print(f"✅ Added skill '{skill}' to session. {pickup_message}")
+                    print(f"✅ Added skill '{skill}' to session.")
                 else:
                     print(f"ℹ️  Skill '{skill}' already active.")
-            return True
+            # Don't return True — allow a prompt on the same line to still run
 
         if args.no_skill:
             for skill in args.no_skill:
@@ -193,12 +193,11 @@ class ConfigManager:
                     print(f"✅ Removed skill '{skill}' from session.")
                 else:
                     print(f"ℹ️  Skill '{skill}' was not active.")
-            return True
+            # Don't return True — allow a prompt on the same line to still run
 
-        if args.no_cost is not None:
-            self.show_cost = not args.no_cost
-            state = "disabled" if args.no_cost else "enabled"
-            print(f"✅ Cost display {state}.")
+        if args.no_cost:
+            self.show_cost = False
+            print("✅ Cost display disabled.")
             return True
 
         if args.hooks_file is not None:

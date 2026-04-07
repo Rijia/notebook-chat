@@ -60,6 +60,70 @@ def load_ipython_extension(ipython):
     from .cc_jupyter import load_ipython_extension as load_cc
     load_cc(ipython)
 
+    # Disable Python syntax highlighting for %cc / %%cc magic cells.
+    # Classic Notebook: register the magic prefixes as plain-text mode.
+    # JupyterLab: inject a MutationObserver that strips CodeMirror colour
+    # classes from cells whose content starts with %%cc or %cc.
+    try:
+        from IPython.display import display, Javascript
+        display(Javascript("""
+(function() {
+  // ── Classic Jupyter Notebook ──────────────────────────────────────────────
+  if (typeof IPython !== 'undefined' && IPython.CodeCell) {
+    var modes = IPython.CodeCell.options_default.highlight_modes;
+    var plain = { reg: [/^%%cc/, /^%cc/] };
+    modes['magic_notellm'] = plain;
+    // Re-apply to any already-rendered cells
+    Jupyter.notebook.get_cells().forEach(function(cell) {
+      if (cell.cell_type === 'code') { cell.auto_highlight(); }
+    });
+  }
+
+  // ── JupyterLab (CodeMirror 6) ─────────────────────────────────────────────
+  function stripHighlight(node) {
+    if (!(node instanceof Element)) return;
+    // Find the editor content element
+    var editors = node.querySelectorAll
+      ? node.querySelectorAll('.cm-content, .jp-CodeMirrorEditor')
+      : [];
+    editors.forEach(function(editor) {
+      var text = editor.innerText || editor.textContent || '';
+      if (/^%%?cc(\\b|\\s|$)/.test(text.trimStart())) {
+        // Override all syntax-coloured spans to inherit the default colour
+        editor.querySelectorAll('span[class*="cm-"]').forEach(function(span) {
+          span.style.color = 'inherit';
+        });
+      }
+    });
+  }
+
+  // Observe DOM mutations so newly typed / run cells are also handled
+  if (typeof MutationObserver !== 'undefined') {
+    var observer = new MutationObserver(function(mutations) {
+      mutations.forEach(function(m) {
+        m.addedNodes.forEach(stripHighlight);
+        if (m.type === 'characterData' && m.target.parentElement) {
+          stripHighlight(
+            m.target.parentElement.closest('.jp-Cell') ||
+            m.target.parentElement
+          );
+        }
+      });
+    });
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      characterData: true
+    });
+
+    // Also run once on all existing cells
+    document.querySelectorAll('.jp-Cell, .cell').forEach(stripHighlight);
+  }
+})();
+"""))
+    except Exception:
+        pass  # Non-fatal: highlighting fix is cosmetic only
+
 
 def unload_ipython_extension(ipython):
     """Unload the cc_jupyter extension."""
