@@ -23,11 +23,14 @@ class SkillLoader:
     def __init__(self, extra_path: str | None = None) -> None:
         base = Path.home() / ".claude"
         cwd_skills = Path.cwd() / "skills"
+        # Built-in skills bundled with the package (lowest priority)
+        package_skills = Path(__file__).parent.parent / "skills"
         self._search_roots: list[tuple[Path, bool]] = [
             # (directory, is_commands_dir)
             (base / "skills", False),
             (base / "commands", True),   # commands/*.md can be used as skills
             (cwd_skills, False),
+            (package_skills, False),     # built-in DS skills ship with the package
         ]
         if extra_path:
             self._search_roots.insert(0, (Path(extra_path).expanduser(), False))

@@ -60,6 +60,51 @@ if TYPE_CHECKING:
 _magic_instance: ClaudeCodeMagics | None = None
 
 
+def _parse_context_arg(context: str) -> tuple[int, list[int] | None, bool, int | None]:
+    """Parse the --context argument value.
+
+    Args:
+        context: Context string from the --context argument
+
+    Returns:
+        Tuple of (cells_to_load, specific_indices, suppress_shell, shell_limit) where:
+        - cells_to_load: number of recent cells to load for new conversations (-1=all, 0=none)
+        - specific_indices: list of specific cell line numbers (or None)
+        - suppress_shell: whether to suppress shell output for continuing conversations
+        - shell_limit: max cells to include from shell output (None=all, 0=none)
+
+    Raises:
+        ValueError: If the context string is not a valid value
+    """
+    context = context.strip().lower()
+    if context in ("none", "0"):
+        return (0, None, True, 0)
+    elif context == "current":
+        return (1, None, False, 1)
+    elif context == "all":
+        return (-1, None, False, None)
+    elif "," in context:
+        try:
+            indices = [int(x.strip()) for x in context.split(",")]
+            return (0, indices, False, None)
+        except ValueError:
+            raise ValueError(
+                f"Invalid --context value '{context}'. "
+                "Expected: none, current, all, a number, or comma-separated cell numbers (e.g. '3,5,7')"
+            ) from None
+    else:
+        try:
+            n = int(context)
+            if n < -1:
+                raise ValueError("--context number must be -1 or greater")
+            return (n, None, n == 0, n if n > 0 else None)
+        except ValueError:
+            raise ValueError(
+                f"Invalid --context value '{context}'. "
+                "Expected: none, current, all, a number, or comma-separated cell numbers (e.g. '3,5,7')"
+            ) from None
+
+
 @tool(
     "create_python_cell",
     "Create a cell with Python code in the IPython environment",
@@ -298,6 +343,7 @@ class ClaudeCodeMagics(Magics):
         captured_images: list[dict[str, Any]] | None = None,
         verbose: bool = False,
         extra_skills: list[str] | None = None,
+        context: str | None = None,
     ) -> None:
         """
         Implementation of claude_local functionality with support for captured images.
@@ -307,6 +353,8 @@ class ClaudeCodeMagics(Magics):
             previous_execution: Previous execution context
             captured_images: Optional list of captured images from previous execution
             verbose: Whether to show verbose output
+            extra_skills: Additional skills to inject for this call
+            context: Context control string ('none', 'current', 'all', N, or 'i,j,k')
         """
         if captured_images is None:
             captured_images = []
@@ -330,14 +378,31 @@ class ClaudeCodeMagics(Magics):
             # Clean up the captured output variable
             del self.shell.user_ns["_claude_captured_output"]
 
+        # Resolve context settings (--context arg overrides config defaults)
+        cells_to_load = self._config_manager.cells_to_load
+        specific_cell_indices: list[int] | None = None
+        suppress_shell = False
+        shell_limit: int | None = None  # None = all cells
+
+        if context is not None:
+            try:
+                cells_to_load, specific_cell_indices, suppress_shell, shell_limit = (
+                    _parse_context_arg(context)
+                )
+            except ValueError as e:
+                print(f"⚠️ {e}", flush=True)
+                return
+
         # Get current variables for context
         variables_info = self._variable_tracker.get_variables_info()
 
         # Capture any shell output since last call
         # Skip this if we're loading cells for a new conversation to avoid duplication
         shell_output = ""
-        if not self._config_manager.is_new_conversation:
-            shell_output = self._history_manager.get_shell_output_since_last()
+        if not self._config_manager.is_new_conversation and not suppress_shell:
+            shell_output = self._history_manager.get_shell_output_since_last(
+                limit=shell_limit
+            )
 
         # Build enhanced prompt with conversation history
         enhanced_prompt_text = f"""
@@ -363,12 +428,17 @@ Your client's request is <request>{prompt}</request>
                 if imported_content:
                     context_parts.append(imported_content)
 
-            # Add last executed cells if requested
-            if (
-                self._config_manager.cells_to_load != 0
-            ):  # Load cells if not explicitly disabled (0)
+            # Add cell context according to --context setting
+            if specific_cell_indices is not None:
+                # User specified particular cells (e.g. --context 3,5,7)
+                specific_content = self._history_manager.get_specific_cells(
+                    specific_cell_indices
+                )
+                if specific_content:
+                    context_parts.append(specific_content)
+            elif cells_to_load != 0:
                 last_cells_content = self._history_manager.get_last_executed_cells(
-                    self._config_manager.cells_to_load
+                    cells_to_load
                 )
                 if last_cells_content:
                     context_parts.append(last_cells_content)
@@ -572,7 +642,11 @@ Your client's request is <request>{prompt}</request>
         self._config_manager.is_current_execution_verbose = False
 
     def _claude_continue_impl(
-        self, request_id: str, additional_prompt: str = "", verbose: bool = False
+        self,
+        request_id: str,
+        additional_prompt: str = "",
+        verbose: bool = False,
+        context: str | None = None,
     ) -> str:
         cell_queue: list[dict[str, Any]] = (
             self.shell.user_ns.get("_claude_cell_queue", []) if self.shell else []
@@ -662,7 +736,7 @@ Your client's request is <request>{prompt}</request>
             del self.pending_requests[request_id]
 
         # Run a new Claude query with the execution results
-        self._execute_prompt(additional_prompt, continue_prompt)
+        self._execute_prompt(additional_prompt, continue_prompt, context=context)
 
         return request_id  # Return for cell deletion logic
 
@@ -765,6 +839,17 @@ Your client's request is <request>{prompt}</request>
         dest="hooks_file",
         help="Path to a Python file defining a HOOKS dict. Also settable via NOTELLM_HOOKS_FILE env var.",
     )
+    @argument(
+        "--context",
+        type=str,
+        dest="context",
+        metavar="SCOPE",
+        help=(
+            "Control what notebook cells Claude sees as context. "
+            "Values: 'none' (no cells), 'current' (last 1 cell), 'all' (whole notebook), "
+            "N (last N cells), or comma-separated line numbers (e.g. '3,5,7') for selected cells."
+        ),
+    )
     def cc(self, line: str, cell: str | None = None) -> None:
         """
         Run Claude Code with full agentic loop.
@@ -812,7 +897,7 @@ Your client's request is <request>{prompt}</request>
 
         if request_id:
             # There's a pending code execution - continue with it
-            self._claude_continue_impl(request_id, prompt, args.verbose)
+            self._claude_continue_impl(request_id, prompt, args.verbose, context=args.context)
         else:
             # Clear any remaining cell queue when starting a new prompt
             if self.shell is not None and "_claude_cell_queue" in self.shell.user_ns:
@@ -830,7 +915,12 @@ Your client's request is <request>{prompt}</request>
 
             if not prompt:
                 raise ValueError("A prompt must be provided to start the conversation.")
-            self._execute_prompt(prompt, verbose=args.verbose, extra_skills=args.skill)
+            self._execute_prompt(
+                prompt,
+                verbose=args.verbose,
+                extra_skills=args.skill,
+                context=args.context,
+            )
 
     @line_cell_magic
     def ccn(self, line: str, cell: str | None = None) -> None:
@@ -891,7 +981,7 @@ Your client's request is <request>{prompt}</request>
 
         # Now run as normal
         self._config_manager.is_new_conversation = True
-        self._execute_prompt(prompt, verbose=args.verbose)
+        self._execute_prompt(prompt, verbose=args.verbose, context=args.context)
 
     @line_cell_magic
     def cc_skills(self, line: str, cell: str | None = None) -> None:

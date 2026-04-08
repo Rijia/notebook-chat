@@ -93,12 +93,61 @@ class HistoryManager:
 
         return "\n".join(cell_parts)
 
-    def get_shell_output_since_last(self) -> str:
+    def get_specific_cells(self, indices: list[int]) -> str:
+        """Get specific cells by their line numbers from the history.
+
+        Args:
+            indices: List of cell line numbers to retrieve
+
+        Returns:
+            Formatted string with the specified cells
+        """
+        if not indices:
+            return ""
+
+        try:
+            min_idx = min(indices)
+            max_idx = max(indices)
+            history = self.get_history_range(start=min_idx, stop=max_idx + 1)
+
+            # Build lookup by line_num
+            cells_by_line: dict[int, Any] = {}
+            for _, line_num, item in history:
+                cells_by_line[line_num] = item
+
+            cells_content = ["Selected cells from this session:"]
+            for idx in sorted(indices):
+                item = cells_by_line.get(idx)
+                if item is not None:
+                    if isinstance(item, tuple):
+                        input_code, output_result = item
+                    else:
+                        input_code = item
+                        output_result = None
+                    if input_code and not input_code.strip().startswith(
+                        "get_ipython().run_cell_magic"
+                    ):
+                        cells_content.append(self.format_cell(idx, input_code, output_result))
+
+            if len(cells_content) > 1:
+                return "\n\n".join(cells_content)
+            return ""
+
+        except Exception:
+            return ""
+
+    def get_shell_output_since_last(self, limit: int | None = None) -> str:
         """Get any shell commands and output since the last claude_local call.
+
+        Args:
+            limit: Maximum number of recent cells to include (None for all, 0 for none)
 
         Returns:
             Formatted string with recent shell interactions
         """
+        if limit == 0:
+            return ""
+
         try:
             shell_interactions = []
 
@@ -145,6 +194,10 @@ class HistoryManager:
                             output = out_dict.get(i)
                             formatted_cell = self.format_cell(i, cmd, output)
                             shell_interactions.append(formatted_cell)
+
+            # Apply limit: keep only the most recent N interactions
+            if limit is not None and limit > 0:
+                shell_interactions = shell_interactions[-limit:]
 
             if shell_interactions:
                 shell_output = "\n".join(shell_interactions)

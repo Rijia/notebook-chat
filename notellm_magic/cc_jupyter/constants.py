@@ -5,6 +5,14 @@ PYGMENTS_AVAILABLE = importlib.util.find_spec("pygments") is not None
 
 HELP_TEXT = """
 🚀 Claude Code Magic loaded!
+Built-in DS skills (use with --skill):
+  ds-eda        # Exploratory data analysis
+  ds-experiment # A/B experiment analysis
+  ds-model      # ML model pipeline
+  ds-report     # Executive-ready report
+  ds-review     # Code/notebook review
+  ds-segment    # Customer segmentation
+
 Features:
   • Full agentic Claude Code execution
   • Cell-based code approval workflow
@@ -19,6 +27,7 @@ Usage:
   %cc --help               # Show available options and usage information
 
 Context management:
+  %cc --context <scope>     # Control what cells Claude sees: none, current, all, N (last N), or '3,5,7' (selected)
   %cc --import <file>       # Add a file to be included in initial conversation messages
   %cc --add-dir <dir>       # Add a directory to Claude's accessible directories
   %cc --mcp-config <file>   # Set path to a .mcp.json file containing MCP server configurations
