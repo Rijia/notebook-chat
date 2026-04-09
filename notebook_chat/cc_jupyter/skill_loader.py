@@ -1,5 +1,5 @@
 """
-Skill loading for notellm - based on the s05_skill_loading pattern from
+Skill loading for notebook-chat - based on the s05_skill_loading pattern from
 learn-claude-code. Skills are on-demand knowledge files injected into the
 agent's context rather than bloating the system prompt.
 

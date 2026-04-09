@@ -2,7 +2,7 @@
 set -euo pipefail
 
 #######################################
-# notellm installation script
+# notebook-chat installation script
 #######################################
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -16,7 +16,7 @@ BOLD=$'\033[1m'
 NC=$'\033[0m'
 
 echo ""
-echo "${BOLD}notellm_magic Installation${NC}"
+echo "${BOLD}notebook_chat Installation${NC}"
 echo "=============================="
 echo ""
 
@@ -83,7 +83,7 @@ echo ""
 echo "${BLUE}[3/5]${NC} Determining install location..."
 
 USER_SITE=$(python3 -c "import site; print(site.USER_SITE)")
-echo "  Target: $USER_SITE/notellm_magic/"
+echo "  Target: $USER_SITE/notebook_chat/"
 
 #######################################
 # Step 4: Remove existing installation
@@ -91,10 +91,10 @@ echo "  Target: $USER_SITE/notellm_magic/"
 echo ""
 echo "${BLUE}[4/5]${NC} Checking for existing installation..."
 
-if [ -d "$USER_SITE/notellm_magic" ]; then
+if [ -d "$USER_SITE/notebook_chat" ]; then
     echo "  Found existing installation, removing..."
-    rm -rf "$USER_SITE/notellm_magic"
-    echo "  Removed: $USER_SITE/notellm_magic/"
+    rm -rf "$USER_SITE/notebook_chat"
+    echo "  Removed: $USER_SITE/notebook_chat/"
 else
     echo "  No existing installation found"
 fi
@@ -103,7 +103,7 @@ fi
 # Step 5: Install
 #######################################
 echo ""
-echo "${BLUE}[5/5]${NC} Installing notellm_magic..."
+echo "${BLUE}[5/5]${NC} Installing notebook_chat..."
 
 # Ensure target directory exists
 if [ ! -d "$USER_SITE" ]; then
@@ -112,13 +112,13 @@ if [ ! -d "$USER_SITE" ]; then
 fi
 
 # Copy module
-cp -r "$SCRIPT_DIR/notellm_magic" "$USER_SITE/"
+cp -r "$SCRIPT_DIR/notebook_chat" "$USER_SITE/"
 
 # Verify installation
-if [ -d "$USER_SITE/notellm_magic" ]; then
-    FILE_COUNT=$(find "$USER_SITE/notellm_magic" -type f -name "*.py" | wc -l)
+if [ -d "$USER_SITE/notebook_chat" ]; then
+    FILE_COUNT=$(find "$USER_SITE/notebook_chat" -type f -name "*.py" | wc -l)
     echo "  Copied: $FILE_COUNT Python files"
-    echo -e "  ${GREEN}Installed to: $USER_SITE/notellm_magic/${NC}"
+    echo -e "  ${GREEN}Installed to: $USER_SITE/notebook_chat/${NC}"
 else
     echo -e "${RED}  ERROR: Installation failed${NC}"
     exit 1
@@ -134,7 +134,7 @@ echo "=============================="
 echo ""
 echo "Usage in Jupyter notebook:"
 echo ""
-echo "  %load_ext notellm_magic"
+echo "  %load_ext notebook_chat"
 echo ""
 echo "  %cc Create a hello world script"
 echo ""
@@ -142,6 +142,6 @@ echo "  %%cc"
 echo "  Your multi-line"
 echo "  prompt here"
 echo ""
-echo "On first load, notellm creates .claude/settings.local.json"
+echo "On first load, notebook-chat creates .claude/settings.local.json"
 echo "with permissions for Bash, Read, Write, Edit, WebSearch, etc."
 echo ""

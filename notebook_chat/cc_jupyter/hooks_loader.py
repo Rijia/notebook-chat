@@ -1,8 +1,8 @@
 """
-Python hooks loader for notellm.
+Python hooks loader for notebook-chat.
 
-Users can define their own hooks in a Python file (default: ~/.claude/notellm_hooks.py
-or set NOTELLM_HOOKS_FILE env var).
+Users can define their own hooks in a Python file (default: ~/.claude/notebook_chat_hooks.py
+or set NOTEBOOK_CHAT_HOOKS_FILE env var).
 
 The file must define a module-level dict called HOOKS:
 
@@ -36,7 +36,7 @@ from pathlib import Path
 from typing import Any
 
 
-_DEFAULT_HOOKS_FILE = Path.home() / ".claude" / "notellm_hooks.py"
+_DEFAULT_HOOKS_FILE = Path.home() / ".claude" / "notebook_chat_hooks.py"
 
 
 def load_hooks(hooks_file: str | None = None) -> dict[str, Any] | None:
@@ -44,21 +44,21 @@ def load_hooks(hooks_file: str | None = None) -> dict[str, Any] | None:
     Load hooks from a Python file and return the HOOKS dict.
 
     Args:
-        hooks_file: Path to the hooks file. Defaults to ~/.claude/notellm_hooks.py
-                    or NOTELLM_HOOKS_FILE env var.
+        hooks_file: Path to the hooks file. Defaults to ~/.claude/notebook_chat_hooks.py
+                    or NOTEBOOK_CHAT_HOOKS_FILE env var.
 
     Returns:
         The HOOKS dict from the file, or None if file not found / no HOOKS defined.
     """
     if hooks_file is None:
-        hooks_file = os.environ.get("NOTELLM_HOOKS_FILE") or str(_DEFAULT_HOOKS_FILE)
+        hooks_file = os.environ.get("NOTEBOOK_CHAT_HOOKS_FILE") or str(_DEFAULT_HOOKS_FILE)
 
     path = Path(hooks_file).expanduser()
     if not path.exists():
         return None
 
     try:
-        spec = importlib.util.spec_from_file_location("_notellm_hooks", path)
+        spec = importlib.util.spec_from_file_location("_notebook_chat_hooks", path)
         if spec is None or spec.loader is None:
             return None
         module = importlib.util.module_from_spec(spec)

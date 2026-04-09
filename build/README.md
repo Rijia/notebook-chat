@@ -1,12 +1,12 @@
 # Build Scripts
 
-## build_notellm_magic.sh
+## build_notebook_chat.sh
 
-Builds the `notellm_magic/cc_jupyter/` module from the pristine archive.
+Builds the `notebook_chat/cc_jupyter/` module from the pristine archive.
 
 ### What it does
 
-1. Copies `archive/cc_jupyter/` to `notellm_magic/cc_jupyter/`
+1. Copies `archive/cc_jupyter/` to `notebook_chat/cc_jupyter/`
 2. Applies Patch 1: Permission error fix in `magics.py`
 3. Applies Patch 2: Decorative header removal in `jupyter_integration.py`
 
@@ -18,7 +18,7 @@ Builds the `notellm_magic/cc_jupyter/` module from the pristine archive.
 ### Usage
 
 ```bash
-./build/build_notellm_magic.sh
+./build/build_notebook_chat.sh
 ```
 
 ## Patches

@@ -71,7 +71,7 @@ bash uninstall.sh
 ## Quick Start
 
 ```python
-%load_ext notellm_magic
+%load_ext notebook_chat
 ```
 
 A security warning and confirmation banner will appear on load (Claude can run shell commands and access files). A `.claude/settings.local.json` is created in your project directory with default permissions.
@@ -187,7 +187,7 @@ Hooks run Python callbacks at lifecycle events — useful for logging tool calls
 
 ### Defining hooks
 
-Create `~/.claude/notellm_hooks.py`:
+Create `~/.claude/notebook_chat_hooks.py`:
 
 ```python
 from claude_agent_sdk import HookMatcher
@@ -213,7 +213,7 @@ This file is loaded automatically on every `%cc` call. Use a different file:
 
 Or set once for the session:
 ```bash
-export NOTELLM_HOOKS_FILE=/path/to/my_hooks.py
+export NOTEBOOK_CHAT_HOOKS_FILE=/path/to/my_hooks.py
 ```
 
 ### Available hook events
@@ -240,9 +240,9 @@ Each hook receives `(input: HookInput, event_name: str, ctx: HookContext)` and r
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `ANTHROPIC_API_KEY` | API key for Claude (Anthropic) | required |
-| `NOTELLM_CLI_PATH` | Path to CLI binary | `claude` in PATH |
-| `NOTELLM_SKILLS_PATH` | Extra directory to search for skills | — |
-| `NOTELLM_HOOKS_FILE` | Path to Python hooks file | `~/.claude/notellm_hooks.py` |
+| `NOTEBOOK_CHAT_CLI_PATH` | Path to CLI binary | `claude` in PATH |
+| `NOTEBOOK_CHAT_SKILLS_PATH` | Extra directory to search for skills | — |
+| `NOTEBOOK_CHAT_HOOKS_FILE` | Path to Python hooks file | `~/.claude/notebook_chat_hooks.py` |
 | `CLAUDE_CODE_USE_OPENAI` | Enable OpenAI-compatible mode (openclaude) | — |
 | `OPENAI_API_KEY` | API key for OpenAI-compatible provider | — |
 | `OPENAI_MODEL` | Model name for OpenAI-compatible provider | — |
@@ -256,7 +256,7 @@ notebook-chat works with [openclaude](https://github.com/gitlawb/openclaude), a 
 
 **From the terminal (before launching Jupyter):**
 ```bash
-export NOTELLM_CLI_PATH=$(which openclaude)
+export NOTEBOOK_CHAT_CLI_PATH=$(which openclaude)
 export CLAUDE_CODE_USE_OPENAI=1
 export OPENAI_API_KEY=sk-...
 export OPENAI_MODEL=gpt-4o

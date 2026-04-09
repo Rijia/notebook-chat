@@ -808,7 +808,7 @@ Your client's request is <request>{prompt}</request>
         "--cli-path",
         type=str,
         dest="cli_path",
-        help="Path to CLI binary (e.g. openclaude). Also settable via NOTELLM_CLI_PATH env var.",
+        help="Path to CLI binary (e.g. openclaude). Also settable via NOTEBOOK_CHAT_CLI_PATH env var.",
     )
     @argument(
         "--skill",
@@ -837,7 +837,7 @@ Your client's request is <request>{prompt}</request>
         "--hooks-file",
         type=str,
         dest="hooks_file",
-        help="Path to a Python file defining a HOOKS dict. Also settable via NOTELLM_HOOKS_FILE env var.",
+        help="Path to a Python file defining a HOOKS dict. Also settable via NOTEBOOK_CHAT_HOOKS_FILE env var.",
     )
     @argument(
         "--context",

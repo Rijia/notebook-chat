@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "notebook-chat"
+version = "0.1.0"
+description = "Talk to Claude from inside your Jupyter notebook — %cc magic for data science workflows"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+keywords = ["jupyter", "claude", "ai", "data-science", "notebook", "llm", "magic"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Framework :: Jupyter",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "ipython>=7.0",
+    "claude-agent-sdk",
+]
+
+[project.optional-dependencies]
+dev = ["build", "twine"]
+
+[project.urls]
+Homepage = "https://github.com/Rijia/notebook-chat"
+Repository = "https://github.com/Rijia/notebook-chat"
+"Bug Tracker" = "https://github.com/Rijia/notebook-chat/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["notebook_chat*"]
+
+[tool.setuptools.package-data]
+notebook_chat = ["skills/*.md"]

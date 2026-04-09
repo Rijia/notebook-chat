@@ -2,7 +2,7 @@
 set -euo pipefail
 
 #######################################
-# notellm uninstallation script
+# notebook-chat uninstallation script
 #######################################
 
 # Colors
@@ -14,7 +14,7 @@ BOLD=$'\033[1m'
 NC=$'\033[0m'
 
 echo ""
-echo "${BOLD}notellm_magic Uninstallation${NC}"
+echo "${BOLD}notebook_chat Uninstallation${NC}"
 echo "=============================="
 echo ""
 
@@ -38,14 +38,14 @@ echo ""
 echo "${BLUE}[2/4]${NC} Determining install location..."
 
 USER_SITE=$(python3 -c "import site; print(site.USER_SITE)")
-TARGET="$USER_SITE/notellm_magic"
+TARGET="$USER_SITE/notebook_chat"
 echo "  Target: $TARGET/"
 
 #######################################
 # Step 3: Remove installation
 #######################################
 echo ""
-echo "${BLUE}[3/4]${NC} Removing notellm_magic..."
+echo "${BLUE}[3/4]${NC} Removing notebook_chat..."
 
 if [ -d "$TARGET" ]; then
     # Count files before removal
@@ -82,8 +82,8 @@ else
 fi
 
 # Check module cannot be imported from site-packages
-if python3 -c "import notellm_magic" 2>/dev/null; then
-    FOUND_AT=$(python3 -c "import notellm_magic; print(notellm_magic.__file__)" 2>/dev/null || echo "unknown location")
+if python3 -c "import notebook_chat" 2>/dev/null; then
+    FOUND_AT=$(python3 -c "import notebook_chat; print(notebook_chat.__file__)" 2>/dev/null || echo "unknown location")
     # Check if it's the local source (not installed copy)
     if [[ "$FOUND_AT" == *"site-packages"* ]]; then
         echo -e "  ${RED}FAIL: Module still importable from: $FOUND_AT${NC}"
@@ -113,7 +113,7 @@ else
     echo -e "${GREEN}Uninstallation complete!${NC}"
     echo "=============================="
     echo ""
-    echo "Note: .claude/settings.local.json files created by notellm"
+    echo "Note: .claude/settings.local.json files created by notebook-chat"
     echo "in your project directories are not removed."
     echo ""
     echo "To reinstall:"

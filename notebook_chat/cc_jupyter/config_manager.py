@@ -45,17 +45,17 @@ class ConfigManager:
         self.model = "sonnet"
 
         # CLI path (for openclaude or other compatible CLIs)
-        self.cli_path: str | None = os.environ.get("NOTELLM_CLI_PATH") or None
+        self.cli_path: str | None = os.environ.get("NOTEBOOK_CHAT_CLI_PATH") or None
 
         # Skill loading
-        self.skills_path: str | None = os.environ.get("NOTELLM_SKILLS_PATH") or None
+        self.skills_path: str | None = os.environ.get("NOTEBOOK_CHAT_SKILLS_PATH") or None
         self.active_skills: list[str] = []  # skills loaded for current session
 
         # Cost/usage display
         self.show_cost: bool = True
 
         # Python hooks file
-        self.hooks_file: str | None = os.environ.get("NOTELLM_HOOKS_FILE") or None
+        self.hooks_file: str | None = os.environ.get("NOTEBOOK_CHAT_HOOKS_FILE") or None
 
         # Import tracking
         self.imported_files: list[str] = []

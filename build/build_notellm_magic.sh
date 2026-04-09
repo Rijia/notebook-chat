@@ -2,8 +2,8 @@
 set -euo pipefail
 
 #######################################
-# Build notellm_magic from archive
-# Copies archive/cc_jupyter → notellm_magic/cc_jupyter
+# Build notebook_chat from archive
+# Copies archive/cc_jupyter → notebook_chat/cc_jupyter
 # Applies patches for compatibility
 #######################################
 
@@ -11,7 +11,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
 
 ARCHIVE_DIR="$REPO_DIR/archive/cc_jupyter"
-TARGET_DIR="$REPO_DIR/notellm_magic/cc_jupyter"
+TARGET_DIR="$REPO_DIR/notebook_chat/cc_jupyter"
 
 # Colors
 GREEN=$'\033[0;32m'
@@ -19,7 +19,7 @@ YELLOW=$'\033[1;33m'
 RED=$'\033[0;31m'
 NC=$'\033[0m'
 
-echo "Building notellm_magic from archive..."
+echo "Building notebook_chat from archive..."
 echo ""
 
 # Check archive exists
@@ -35,7 +35,7 @@ if [ -d "$TARGET_DIR" ]; then
 fi
 
 # Copy archive to target
-echo "Copying archive to notellm_magic/cc_jupyter/..."
+echo "Copying archive to notebook_chat/cc_jupyter/..."
 cp -r "$ARCHIVE_DIR" "$TARGET_DIR"
 
 #######################################
