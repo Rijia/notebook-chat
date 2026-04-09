@@ -56,8 +56,8 @@ pip install claude-agent-sdk
 ### Install notebook-chat
 
 ```bash
-git clone https://github.com/prairie-guy/notellm.git
-cd notellm
+git clone https://github.com/Rijia/notebook-chat.git
+cd notebook-chat
 bash setup.sh
 ```
 
