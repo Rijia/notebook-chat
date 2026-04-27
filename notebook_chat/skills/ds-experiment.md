@@ -10,6 +10,7 @@ Analyze an A/B experiment with full statistical rigor. $ARGUMENTS should describ
 ### 2. Descriptive Statistics
 - N, mean, median, std, and 95% CI for each metric by group
 - Distribution plots (KDE) overlaid for treatment vs control for each metric
+- **For every rate metric, always show numerator and denominator explicitly**, not just the rate. E.g. "conversion rate: 523 / 10,412 = 5.02%" — never just "5.02%". This makes it immediately visible whether a rate change is driven by a real signal or by a denominator shift.
 
 ### 3. Observation Window Audit (do this before any metric analysis)
 For every metric, explicitly ask: is the observation window the same length for all users?
@@ -25,6 +26,7 @@ For every metric, explicitly ask: is the observation window the same length for 
 ### 4. Primary Metric Analysis
 For each metric that passed the observation window audit:
 - Choose the right test: two-proportion z-test for rates, t-test/Mann-Whitney for continuous
+- **Always report numerator and denominator for every rate metric** in both treatment and control, alongside the rate. Format: `control: 412 / 9,841 = 4.19%`, `treatment: 523 / 10,412 = 5.02%`. This is required — a rate alone is uninterpretable without knowing its base.
 - Report: absolute lift, relative lift (%), p-value, 95% CI on the lift
 - Compute observed statistical power given the realized sample size
 - Flag if underpowered (power < 0.8)
