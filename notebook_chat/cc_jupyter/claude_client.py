@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import contextvars
 import traceback
 from typing import TYPE_CHECKING, Any
 
@@ -36,7 +37,23 @@ MARKDOWN_PATTERNS = [
     "---",  # Tables
     ">",  # Blockquotes
     "~~",  # Strikethrough
+    "$$",  # LaTeX block math
+    "\\frac",  # LaTeX fractions
+    "\\sqrt",  # LaTeX square root
+    "\\sum",   # LaTeX summation
+    "\\int",   # LaTeX integral
+    "\\alpha", "\\beta", "\\gamma",  # Greek letters
 ]
+
+# Context captured from the main Jupyter thread so display() works from background threads.
+# Set via set_display_context() before each query.
+_display_context: contextvars.Context | None = None
+
+
+def set_display_context(ctx: contextvars.Context) -> None:
+    """Store the main thread's context for use in background-thread display calls."""
+    global _display_context  # noqa: PLW0603
+    _display_context = ctx
 
 
 def _display_cost(message: ResultMessage) -> None:
@@ -79,10 +96,14 @@ def _display_claude_message_with_markdown(text: str) -> None:
     try:
         from IPython.display import Markdown, display
 
-        display(Markdown(claude_message))
-    except (ImportError, LookupError):
-        # LookupError: Jupyter's parent_header ContextVar is not set in our
-        # background asyncio context, so fall back to plain print.
+        if _display_context is not None:
+            # Run display() inside the main thread's context so Jupyter's
+            # parent_header ContextVar is set — otherwise we get a LookupError
+            # from the background asyncio thread.
+            _display_context.run(display, Markdown(claude_message))
+        else:
+            display(Markdown(claude_message))
+    except Exception:
         print(claude_message, flush=True)
 
 

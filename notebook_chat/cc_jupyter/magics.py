@@ -35,7 +35,7 @@ from .capture_helpers import (
     extract_images_from_captured,
     format_images_summary,
 )
-from .claude_client import ClaudeClientManager, run_streaming_query
+from .claude_client import ClaudeClientManager, run_streaming_query, set_display_context
 from .config_manager import ConfigManager
 from .history_manager import HistoryManager
 from .hooks_loader import load_hooks
@@ -571,6 +571,10 @@ Your client's request is <request>{prompt}</request>
                     pass
                 loop.close()
                 asyncio.set_event_loop(None)
+
+        # Capture the main thread's Jupyter context so display() works from the background thread
+        import contextvars
+        set_display_context(contextvars.copy_context())
 
         # Run in a separate thread to avoid any asyncio context issues
         thread = threading.Thread(target=run_in_thread)
