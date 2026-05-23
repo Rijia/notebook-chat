@@ -39,13 +39,14 @@ from typing import Any
 _DEFAULT_HOOKS_FILE = Path.home() / ".claude" / "notebook_chat_hooks.py"
 
 
-def load_hooks(hooks_file: str | None = None) -> dict[str, Any] | None:
+def load_hooks(hooks_file: str | None = None, verbose: bool = False) -> dict[str, Any] | None:
     """
     Load hooks from a Python file and return the HOOKS dict.
 
     Args:
         hooks_file: Path to the hooks file. Defaults to ~/.claude/notebook_chat_hooks.py
                     or NOTEBOOK_CHAT_HOOKS_FILE env var.
+        verbose: If True, print a breakdown of loaded hook events and functions.
 
     Returns:
         The HOOKS dict from the file, or None if file not found / no HOOKS defined.
@@ -55,6 +56,8 @@ def load_hooks(hooks_file: str | None = None) -> dict[str, Any] | None:
 
     path = Path(hooks_file).expanduser()
     if not path.exists():
+        if verbose:
+            print(f"🪝 No hooks file found at {path}", flush=True)
         return None
 
     try:
@@ -66,6 +69,14 @@ def load_hooks(hooks_file: str | None = None) -> dict[str, Any] | None:
         hooks = getattr(module, "HOOKS", None)
         if hooks is not None:
             print(f"🪝 Loaded hooks from {path}", flush=True)
+            if verbose:
+                for event, matchers in hooks.items():
+                    fn_names = []
+                    for m in matchers:
+                        for fn in getattr(m, "hooks", []):
+                            fn_names.append(getattr(fn, "__name__", "?"))
+                    label = ", ".join(fn_names) if fn_names else f"{len(matchers)} matcher(s)"
+                    print(f"  🪝 {event}: {label}", flush=True)
         return hooks
     except Exception as e:
         print(f"⚠️  Failed to load hooks from {path}: {e}", flush=True)

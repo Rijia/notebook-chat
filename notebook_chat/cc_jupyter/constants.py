@@ -38,6 +38,8 @@ Output:
   %cc --max-cells <num>    # Set the maximum number of cells CC can create per turn (default: 3)
 
 Display:
+  %cc --status             # Show current session state (model, skills, hooks, context)
+  %cc --verbose-hooks      # Toggle verbose hook logging (shows event/function names each run)
   %cc --clean              # Replace prompt cells with Claude's code cells (tell us if you like this feature, maybe it should be the default)
   %cc --no-clean           # Turn off the above setting (default)
 

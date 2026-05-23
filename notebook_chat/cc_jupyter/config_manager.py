@@ -63,6 +63,9 @@ class ConfigManager:
         # Directory permissions
         self.added_directories: list[str] = []
 
+        # Hook verbosity
+        self.verbose_hooks: bool = False
+
         # MCP configuration
         self.mcp_config_file: str | None = None
 
@@ -80,6 +83,66 @@ class ConfigManager:
         if not self.cells_to_load_user_set:
             self.cells_to_load = 0
 
+    def print_status(self) -> None:
+        """Print a summary of the current session state."""
+        lines = ["", "📊 Session Status", "─" * 44]
+
+        lines.append(f"  Model:          {self.model}")
+
+        conv_state = "new" if self.is_new_conversation else "continuing"
+        lines.append(f"  Conversation:   {conv_state}")
+
+        if self.active_skills:
+            lines.append(f"  Skills:         {', '.join(self.active_skills)}")
+        else:
+            lines.append("  Skills:         (none)")
+
+        hooks_path_str = (
+            self.hooks_file
+            or os.environ.get("NOTEBOOK_CHAT_HOOKS_FILE")
+            or str(Path.home() / ".claude" / "notebook_chat_hooks.py")
+        )
+        hooks_path = Path(hooks_path_str).expanduser()
+        if hooks_path.exists():
+            lines.append(f"  Hooks:          {hooks_path} ✓")
+            lines.append(f"  Verbose hooks:  {'on' if self.verbose_hooks else 'off'}")
+        else:
+            lines.append("  Hooks:          (none)")
+
+        lines.append(f"  Max cells/turn: {self.max_cells}")
+
+        if self.cells_to_load == -1:
+            ctx_str = "all cells"
+        elif self.cells_to_load == 0:
+            ctx_str = "none"
+        else:
+            ctx_str = f"last {self.cells_to_load}"
+        lines.append(f"  Cells in ctx:   {ctx_str}")
+
+        lines.append(f"  Cost display:   {'on' if self.show_cost else 'off'}")
+
+        if self.imported_files:
+            lines.append(f"  Imported files: {len(self.imported_files)}")
+            for f in self.imported_files:
+                lines.append(f"    · {Path(f).name}")
+        else:
+            lines.append("  Imported files: (none)")
+
+        if self.added_directories:
+            lines.append(f"  Added dirs:     {len(self.added_directories)}")
+            for d in self.added_directories:
+                lines.append(f"    · {d}")
+        else:
+            lines.append("  Added dirs:     (none)")
+
+        if self.cli_path:
+            lines.append(f"  CLI path:       {self.cli_path}")
+        if self.mcp_config_file:
+            lines.append(f"  MCP config:     {self.mcp_config_file}")
+
+        lines.append("")
+        print("\n".join(lines), flush=True)
+
     def handle_cc_options(self, args: Any, cell_watcher: CellWatcher) -> bool:
         """
         Handle all command-line options for the cc magic command.
@@ -93,6 +156,16 @@ class ConfigManager:
         """
         if args.help:
             print(HELP_TEXT)
+            return True
+
+        if args.status:
+            self.print_status()
+            return True
+
+        if args.verbose_hooks:
+            self.verbose_hooks = not self.verbose_hooks
+            state = "on" if self.verbose_hooks else "off"
+            print(f"🪝 Verbose hook logging {state}.")
             return True
 
         if args.clean is not None:

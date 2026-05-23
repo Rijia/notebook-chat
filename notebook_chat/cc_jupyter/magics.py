@@ -498,7 +498,7 @@ Your client's request is <request>{prompt}</request>
             mcp_servers.update(additional_mcp_servers)
 
         # Load Python hooks if configured
-        hooks = load_hooks(self._config_manager.hooks_file)
+        hooks = load_hooks(self._config_manager.hooks_file, verbose=self._config_manager.verbose_hooks)
 
         options = ClaudeAgentOptions(
             allowed_tools=[
@@ -753,6 +753,19 @@ Your client's request is <request>{prompt}</request>
 
     @line_cell_magic
     @magic_arguments()
+    @argument(
+        "--status",
+        action="store_true",
+        default=False,
+        help="Show current session status (model, skills, hooks, context settings).",
+    )
+    @argument(
+        "--verbose-hooks",
+        action="store_true",
+        default=False,
+        dest="verbose_hooks",
+        help="Toggle verbose hook logging — prints each hook event and function name when hooks fire.",
+    )
     @argument("--verbose", "-v", action="store_true", help="Show verbose output")
     @argument(
         "--allow-run-all",
