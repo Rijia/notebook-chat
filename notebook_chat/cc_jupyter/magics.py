@@ -35,6 +35,7 @@ from .capture_helpers import (
     extract_images_from_captured,
     format_images_summary,
 )
+from .cell_diff_tracker import CellDiffTracker
 from .claude_client import ClaudeClientManager, run_streaming_query, set_display_context
 from .config_manager import ConfigManager
 from .history_manager import HistoryManager
@@ -165,6 +166,9 @@ async def execute_python_tool(args: dict[str, Any]) -> dict[str, Any]:
         # Create cell in IPython
         _magic_instance._create_approval_cell(code, request_id, tool_use_id)
 
+        # Remember what Claude generated so we can later detect user edits to it.
+        _magic_instance._cell_diff_tracker.record_generated(tool_use_id, code)
+
         # Increment the counter after successful cell creation
         _magic_instance._config_manager.create_python_cell_count += 1
 
@@ -206,6 +210,8 @@ class ClaudeCodeMagics(Magics):
         self._prompt_builder = PromptBuilder(shell)
         self._config_manager = ConfigManager()
         self._skill_loader = SkillLoader(self._config_manager.skills_path)
+        # Detects user edits to Claude-generated cells (instinct capture signal).
+        self._cell_diff_tracker = CellDiffTracker()
 
         # Request tracking for cell-based flow
         # request_id -> request data
@@ -247,17 +253,30 @@ class ClaudeCodeMagics(Magics):
         if self.shell is None:
             return
 
+        # Get the last executed code
+        last_input = (
+            self.shell.user_ns.get("In", [""])[-1] if "In" in self.shell.user_ns else ""
+        )
+
+        # Capture-only: detect whether the user ran an edited version of a Claude cell.
+        # Runs regardless of queue state; never raises into the user's execution.
+        try:
+            capture = self._cell_diff_tracker.inspect_execution(last_input)
+            if capture and self._config_manager.verbose_hooks:
+                print(
+                    f"📝 Captured an edit to a Claude cell "
+                    f"(similarity {capture['similarity']}). View with %cc --captures.",
+                    flush=True,
+                )
+        except Exception:
+            pass
+
         # Check if we have a cell queue
         cell_queue: list[dict[str, Any]] = self.shell.user_ns.get(
             "_claude_cell_queue", []
         )
         if not cell_queue:
             return
-
-        # Get the last executed code
-        last_input = (
-            self.shell.user_ns.get("In", [""])[-1] if "In" in self.shell.user_ns else ""
-        )
 
         # Find the next unexecuted cell in the queue
         next_expected_index: int | None = None
@@ -749,7 +768,39 @@ Your client's request is <request>{prompt}</request>
         Handle all command-line options for the cc magic command.
         Returns True if any option was handled (meaning the command should return early).
         """
+        if getattr(args, "captures", False):
+            self._print_captures()
+            return True
         return self._config_manager.handle_cc_options(args, self.cell_watcher)
+
+    def _print_captures(self) -> None:
+        """Print the log of user edits to Claude-generated cells (capture-only)."""
+        captures = self._cell_diff_tracker.load_captures()
+        if not captures:
+            print(
+                "📝 No captured edits yet. When you edit a Claude-generated cell "
+                "before running it, the change is logged here for review.",
+                flush=True,
+            )
+            return
+
+        import datetime
+
+        print(f"\n📝 Captured edits to Claude cells ({len(captures)})", flush=True)
+        print("─" * 60, flush=True)
+        for i, cap in enumerate(captures, 1):
+            ts = cap.get("timestamp")
+            when = (
+                datetime.datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M")
+                if isinstance(ts, (int, float))
+                else "?"
+            )
+            sim = cap.get("similarity", "?")
+            print(f"\n[{i}] {when}  (similarity {sim})", flush=True)
+            diff = cap.get("diff", "")
+            if diff:
+                print(diff, flush=True)
+        print("", flush=True)
 
     @line_cell_magic
     @magic_arguments()
@@ -758,6 +809,12 @@ Your client's request is <request>{prompt}</request>
         action="store_true",
         default=False,
         help="Show current session status (model, skills, hooks, context settings).",
+    )
+    @argument(
+        "--captures",
+        action="store_true",
+        default=False,
+        help="Show edits the user made to Claude-generated cells (instinct capture log).",
     )
     @argument(
         "--verbose-hooks",
